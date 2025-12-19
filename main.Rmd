@@ -1,0 +1,161 @@
+---
+header-includes:
+- \usepackage{xcolor}
+- \usepackage{color} 
+- \usepackage{fancyhdr,color}
+- \usepackage{lipsum}
+- \fancyfoot[CE] {\thepage}
+title: "**Sales Time-Series Forecasting Project\n &nbsp;  \n Team 16**"
+subtitle: "Applied Forecasting in Complex Systems 2025"
+author:
+  - "Shreya Aggarwal (16163834), B Caissotti di Chiusano (ID)"
+  - "Elena Spano (14444593), Ilesh Yadav (16416368)"
+date: "University of Amsterdam \n &nbsp;  \n December 17, 2025"
+output: html_document
+fontsize: 11pt
+highlight: tango
+geometry: left=1.8cm,right=1.8cm,top=1.8cm,bottom=1.5cm
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  cache = FALSE,
+  fig.width = 10,
+  fig.height = 4,
+  dev.args = list(pointsize = 11)
+)
+
+options(digits = 3, width = 60)
+```
+
+Here is the full set of libraries we will be using for this project: 
+
+```{r}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(ggplot2)
+library(slider)
+```
+
+## 1. Clean the dataset + EDA
+### 1.1 Load the data
+
+```{r}
+sales <- read.csv("/Users/elenaspano/Desktop/sales_train_validation_afcs2025 copy.csv")
+calendar_data <- read.csv("/Users/elenaspano/Desktop/calendar_afcs2025 copy.csv")
+prices <- read.csv("/Users/elenaspano/Desktop/sell_prices_afcs2025 copy.csv")
+```
+
+As we can see with *head(sales)*, this dataset contains a column for each day that is observed in the series (d_1 thorugh d_1913). This suggests that this dataset contains data spanning a little over 5 years, given that 1913 days divided by 365 equals 5.24 years circa. That being said, the current storage method for the dates is a bit inefficient, especially considering we will want to use this data for plotting and forecasting later in this project and will have to merge it with the calendar data as well as the prices data. Additionally, there is a lot of information in the variable *id* alone, that is more useful to us if we break it down into its respective inner variables. Based on documenation on this dataset, we know that the number 3 refers to the item number, while the combination of *00x* refers to the store id. 
+
+## 1.2 Reshape the sales data to a long format 
+
+Now, we will reshape the sales data from a wide format to a long format. To facilitate the later steps to come of forecasting and plotting, it's easier to have one row per item per day.
+
+```{r}
+sales_long <- sales %>%
+  pivot_longer(
+    cols = starts_with("d_"),
+    names_to = "d",
+    values_to = "sales"
+  )
+
+sales_long <- sales_long %>%
+  separate(id, into = c("cat_id","item_num","store","dataset"), sep = "_", extra = "merge") %>%
+  mutate(item_id = paste(cat_id, item_num, store, sep="_"))
+sales_long
+```
+
+Another thing we have to do is match the calendar dates in our *calendar_data* table with the days in our *sales* data. However, we notice with *head(calendar_data)* that the storage of the dates in *sales_long* is not quite the same as the way dates are stored in *calendar_data*. First, we will create a variable *d* in our *calendar_data* as well, so we can easily match it to the *d* column in our *sales* data. 
+
+```{r}
+calendar <- calendar_data %>%
+  mutate(d = paste0("d_", row_number()))
+```
+
+Now, we can join *sales_long* day column with that of *calendar*, as so: 
+
+```{r}
+sales_long <- sales_long %>%
+  left_join(calendar, by = "d")
+sales_long %>%
+  select(cat_id, item_num, store, dataset, d, date, weekday, sales) %>%
+  head(10)
+sales_long <- sales_long %>%
+  mutate(date = as.Date(date, format = "%m/%d/%Y"))
+sales_long
+```
+
+```{r}
+head(sales_long %>% select(d, date, sales, event_name_1))
+summary(sales_long$sales)
+table(sales_long$event_name_1)
+```
+
+## 1.3 Final merges 
+
+The last things we will do before we start exploring our data is, firstly, create useful time-based features. 
+
+```{r}
+sales_long <- sales_long %>%
+  mutate(
+    year  = year(date),
+    month = month(date),
+    week  = wm_yr_wk,
+    wday  = wday(date, label = TRUE),      
+    is_weekend = ifelse(wday %in% c("Sat", "Sun"), 1, 0),
+    event_flag = ifelse(!is.na(event_name_1), 1, 0)
+  )
+```
+
+Last but not least, we will also merge the prices dataset with the *sales* dataset, since the data in *prices* is weekly. This way, we can have sales plus their respective prices at the weekly level. `
+
+```{r}
+sales_long <- sales_long %>%
+  rename(store_id = store) %>%
+  left_join(prices, by = c("store_id", "item_id", "wm_yr_wk"))
+```
+
+
+# 2. Explatoratory Data Analysis (EDA)
+## 2.1 Daily sales per item 
+
+```{r}
+sales_long %>%
+  filter(item_id == "FOODS_3_001") %>%
+  ggplot(aes(date, sales)) +
+  geom_line() +
+  labs(title = "Daily Sales for FOODS_3_001")
+```
+
+## 2.2 Average sales by weekday 
+
+```{r}
+sales_long %>%
+  group_by(wday) %>%
+  summarise(avg_sales = mean(sales)) %>%
+  ggplot(aes(wday, avg_sales)) +
+  geom_col(fill="skyblue") +
+  labs(title="Average Sales by Weekday")
+```
+
+## 2.3 Sales around events
+
+```{r}
+sales_long %>%
+  filter(event_flag == 1) %>%
+  ggplot(aes(date, sales)) +
+  geom_point(color="red") +
+  labs(title="Sales on Event Days")
+```
+
+
+
