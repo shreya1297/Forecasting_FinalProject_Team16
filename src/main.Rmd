@@ -49,9 +49,9 @@ library(slider)
 ### 1.1 Load the data
 
 ```{r}
-sales <- read.csv("/Users/elenaspano/Desktop/sales_train_validation_afcs2025 copy.csv")
-calendar_data <- read.csv("/Users/elenaspano/Desktop/calendar_afcs2025 copy.csv")
-prices <- read.csv("/Users/elenaspano/Desktop/sell_prices_afcs2025 copy.csv")
+sales <- read.csv("/data/sales_train_validation_afcs2025.csv")
+calendar_data <- read.csv("/data/calendar_afcs2025.csv")
+prices <- read.csv("/data/sell_prices_afcs2025.csv")
 ```
 
 As we can see with *head(sales)*, this dataset contains a column for each day that is observed in the series (d_1 thorugh d_1913). This suggests that this dataset contains data spanning a little over 5 years, given that 1913 days divided by 365 equals 5.24 years circa. That being said, the current storage method for the dates is a bit inefficient, especially considering we will want to use this data for plotting and forecasting later in this project and will have to merge it with the calendar data as well as the prices data. Additionally, there is a lot of information in the variable *id* alone, that is more useful to us if we break it down into its respective inner variables. Based on documenation on this dataset, we know that the number 3 refers to the item number, while the combination of *00x* refers to the store id. 
