@@ -10,12 +10,9 @@ library(forecast)
 library(xgboost)
 library(ggplot2)
 
-# NOTE:
-# sales_long is expected to contain:
-# item_id, date, sales, calendar features, and weekly prices
-
-# This line will work once preprocessing is finalized
-# sales_long <- readRDS("data/processed/sales_long.rds")
+## Load preprocessed data
+sales_long <- readRDS("data/processed/sales_long.rds")
+sales_long
 
 # =====================================================
 # Prepare data for modeling ---- check of needed!!
@@ -115,7 +112,7 @@ xgb_model <- xgb.train(
   )
 )
 
-saveRDS(xgb_model, "xgb_model_final.rds")
+saveRDS(xgb_model, "data/processed/xgb_model_final.rds")
 
 # =====================================================
 # Creating validation and evaluation datasets
@@ -182,12 +179,13 @@ val_model_data$pred_sales <- predict(
 )
 
 # Load validation truth
-val_truth <- read.csv("../data/sales_test_validation_afcs2025.csv") %>%
+val_truth <- read.csv("data/sales_test_validation_afcs2025.csv") %>%
   pivot_longer(
     cols = starts_with("d_"),
     names_to = "d",
     values_to = "actual_sales"
   ) %>%
+  mutate(item_id = id) %>%
   group_by(item_id) %>%
   mutate(h = row_number()) %>%
   ungroup()
@@ -199,11 +197,14 @@ val_results <- val_model_data %>%
   ungroup() %>%
   left_join(val_truth, by = c("item_id", "h"))
 
+summary(val_results$pred_sales)
+summary(val_results$actual_sales)
+
 # RMSE (sanity check only)
-val_rmse <- rmse(
-  val_results$actual_sales,
-  val_results$pred_sales
-)
+val_rmse <- accuracy(
+  val_results$pred_sales,
+  val_results$actual_sales
+)[,"RMSE"]
 
 val_rmse
 
@@ -264,18 +265,20 @@ eval_model_data$pred_sales <- predict(
 )
 
 # =====================================================
-# Final RMSE — evaluation file only (REPORTED RESULT)
+# Final RMSE — evaluation file (REPORTED RESULT)
 # =====================================================
 
-eval_truth <- read.csv("../data/sales_test_evaluation_afcs_2025.csv") %>%
+eval_truth <- read.csv("data/sales_test_evaluation_afcs_2025.csv") %>%
   pivot_longer(
     cols = starts_with("d_"),
     names_to = "d",
     values_to = "actual_sales"
   ) %>%
+  mutate(item_id = id) %>%
   group_by(item_id) %>%
   mutate(h = row_number()) %>%
   ungroup()
+
 
 eval_results <- eval_model_data %>%
   group_by(item_id) %>%
@@ -283,9 +286,9 @@ eval_results <- eval_model_data %>%
   ungroup() %>%
   left_join(eval_truth, by = c("item_id", "h"))
 
-final_rmse <- rmse(
-  eval_results$actual_sales,
-  eval_results$pred_sales
-)
+final_rmse <- accuracy(
+  eval_results$pred_sales,
+  eval_results$actual_sales
+)[,"RMSE"]
 
 final_rmse

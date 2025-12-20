@@ -36,8 +36,9 @@ sales_long <- sales %>%
   )
 
 sales_long <- sales_long %>%
-  separate(id, into = c("cat_id","item_num","store","dataset"), sep = "_", extra = "merge") %>%
-  mutate(item_id = paste(cat_id, item_num, store, sep="_"))
+  separate(id, into = c("cat_id","item_num","store","dataset"), sep = "_", extra = "merge",
+           remove = FALSE) %>%
+  mutate(item_id = id)
 sales_long
 
 
