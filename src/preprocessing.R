@@ -105,3 +105,9 @@ sales_long %>%
   geom_point(color="red") +
   labs(title="Sales on Event Days")
 
+## Persist the final preprocessed dataset to ensure reproducibility and
+## consistent feature availability across forecasting models.
+dir.create("data/processed", showWarnings = FALSE)
+saveRDS(sales_long, "data/processed/sales_long.rds")
+
+

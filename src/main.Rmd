@@ -158,4 +158,7 @@ sales_long %>%
 ```
 
 
+```{r export_sales_long}
+# Export processed dataset for modeling
+saveRDS(sales_long, "sales_long.rds")
 
