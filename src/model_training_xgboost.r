@@ -100,195 +100,25 @@ train_matrix <- xgb.DMatrix(
 
 set.seed(42)
 
-xgb_model <- xgb.train(
-  data = train_matrix,
-  nrounds = 300,
-  objective = "reg:squarederror",
-  params = list(
-    eta = 0.05,
-    max_depth = 6,
-    subsample = 0.8,
-    colsample_bytree = 0.8
+train_xgb_model <- function(params) {
+
+  params$objective <- "reg:squarederror"
+
+  xgb.train(
+    data = train_matrix,
+    nrounds = 300,
+    params = params,
+    verbose = 0
   )
+}
+
+# Default model (used if no tuning)
+default_params <- list(
+  eta = 0.05,
+  max_depth = 6,
+  subsample = 0.8,
+  colsample_bytree = 0.8
 )
 
+xgb_model <- train_xgb_model(default_params)
 saveRDS(xgb_model, "data/processed/xgb_model_final.rds")
-
-# =====================================================
-# Creating validation and evaluation datasets
-# =====================================================
-
-last_train_date <- max(sales_long$date)
-
-validation_dates <- seq.Date(
-  from = last_train_date + 1,
-  by   = "day",
-  length.out = 28
-)
-
-evaluation_dates <- seq.Date(
-  from = last_train_date + 29,
-  by   = "day",
-  length.out = 28
-)
-
-# =====================================================
-# Create future dataset — VALIDATION horizon (d_1914–d_1941)
-# =====================================================
-
-validation_future <- sales_long %>%
-  distinct(item_id) %>%
-  crossing(date = validation_dates) %>%
-  left_join(
-    sales_long %>% select(item_id, date, sell_price, event_flag, snap_TX),
-    by = c("item_id", "date")
-  )
-
-combined_val <- bind_rows(
-  sales_long,
-  validation_future %>% mutate(sales = NA_real_)
-)
-
-combined_val <- combined_val %>%
-  group_by(item_id) %>%
-  arrange(date) %>%
-  mutate(
-    lag_28 = lag(sales, 28),
-    lag_35 = lag(sales, 35),
-    lag_42 = lag(sales, 42),
-    rolling_mean_7  = slide_dbl(lag_28, mean, .before = 6,  .complete = TRUE),
-    rolling_mean_28 = slide_dbl(lag_28, mean, .before = 27, .complete = TRUE),
-    rolling_std_7   = slide_dbl(lag_28, sd,   .before = 6,  .complete = TRUE)
-  ) %>%
-  ungroup()
-
-val_model_data <- combined_val %>%
-  filter(date %in% validation_dates)
-
-# =====================================================
-# Predict on validation horizon (sanity check)
-# =====================================================
-
-val_matrix <- xgb.DMatrix(
-  data = as.matrix(val_model_data[, feature_cols])
-)
-
-val_model_data$pred_sales <- predict(
-  xgb_model,
-  val_matrix
-)
-
-# Load validation truth
-val_truth <- read.csv("data/sales_test_validation_afcs2025.csv") %>%
-  pivot_longer(
-    cols = starts_with("d_"),
-    names_to = "d",
-    values_to = "actual_sales"
-  ) %>%
-  mutate(item_id = id) %>%
-  group_by(item_id) %>%
-  mutate(h = row_number()) %>%
-  ungroup()
-
-# Add horizon index to predictions
-val_results <- val_model_data %>%
-  group_by(item_id) %>%
-  mutate(h = row_number()) %>%
-  ungroup() %>%
-  left_join(val_truth, by = c("item_id", "h"))
-
-summary(val_results$pred_sales)
-summary(val_results$actual_sales)
-
-# RMSE (sanity check only)
-val_rmse <- accuracy(
-  val_results$pred_sales,
-  val_results$actual_sales
-)[,"RMSE"]
-
-val_rmse
-
-val_results %>%
-  filter(item_id %in% sample(unique(item_id), 3)) %>%
-  ggplot(aes(x = h)) +
-  geom_line(aes(y = actual_sales), color = "black") +
-  geom_line(aes(y = pred_sales), color = "red") +
-  facet_wrap(~ item_id, scales = "free_y") +
-  labs(
-    title = "Validation: Actual vs Predicted",
-    y = "Sales",
-    x = "Forecast Horizon"
-  )
-
-
-# =====================================================
-# Create future dataset — EVALUATION horizon (d_1942–d_1969)
-# =====================================================
-
-evaluation_future <- sales_long %>%
-  distinct(item_id) %>%
-  crossing(date = evaluation_dates) %>%
-  left_join(
-    sales_long %>% select(item_id, date, sell_price, event_flag, snap_TX),
-    by = c("item_id", "date")
-  )
-
-combined_eval <- bind_rows(
-  sales_long,
-  evaluation_future %>% mutate(sales = NA_real_)
-)
-
-combined_eval <- combined_eval %>%
-  group_by(item_id) %>%
-  arrange(date) %>%
-  mutate(
-    lag_28 = lag(sales, 28),
-    lag_35 = lag(sales, 35),
-    lag_42 = lag(sales, 42),
-    rolling_mean_7  = slide_dbl(lag_28, mean, .before = 6,  .complete = TRUE),
-    rolling_mean_28 = slide_dbl(lag_28, mean, .before = 27, .complete = TRUE),
-    rolling_std_7   = slide_dbl(lag_28, sd,   .before = 6,  .complete = TRUE)
-  ) %>%
-  ungroup()
-
-eval_model_data <- combined_eval %>%
-  filter(date %in% evaluation_dates)
-
-# Predict on evaluation horizon
-eval_matrix <- xgb.DMatrix(
-  data = as.matrix(eval_model_data[, feature_cols])
-)
-
-eval_model_data$pred_sales <- predict(
-  xgb_model,
-  eval_matrix
-)
-
-# =====================================================
-# Final RMSE — evaluation file (REPORTED RESULT)
-# =====================================================
-
-eval_truth <- read.csv("data/sales_test_evaluation_afcs_2025.csv") %>%
-  pivot_longer(
-    cols = starts_with("d_"),
-    names_to = "d",
-    values_to = "actual_sales"
-  ) %>%
-  mutate(item_id = id) %>%
-  group_by(item_id) %>%
-  mutate(h = row_number()) %>%
-  ungroup()
-
-
-eval_results <- eval_model_data %>%
-  group_by(item_id) %>%
-  mutate(h = row_number()) %>%
-  ungroup() %>%
-  left_join(eval_truth, by = c("item_id", "h"))
-
-final_rmse <- accuracy(
-  eval_results$pred_sales,
-  eval_results$actual_sales
-)[,"RMSE"]
-
-final_rmse
