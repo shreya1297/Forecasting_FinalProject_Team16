@@ -124,17 +124,46 @@ eval_rmse <- sqrt(mean((eval_results$pred_sales - eval_results$actual_sales)^2,
 print(val_rmse)
 print(eval_rmse)
 
-# PLOT for examples
-food_example <- eval_results |>
-  filter(item_id == items[262])
 
-ggplot(food_example, aes(x = h)) +
-  geom_line(aes(y = actual_sales, colour = "Actual"), linewidth = 1) +
-  geom_line(aes(y = pred_sales, colour = "Predicted"), linewidth = 1) +
+# Evaluation Plot — Actual vs Predicted (Selected Item) - same code as for the plot in xgboost
+eval_results %>%
+  filter(grepl("FOODS_3_263", item_id)) %>%
+  ggplot(aes(x = h)) +
+  geom_line(
+    aes(y = actual_sales, color = "Actual"),
+    linewidth = 0.9
+  ) +
+  geom_line(
+    aes(y = pred_sales, color = "Predicted"),
+    linewidth = 0.9
+  ) +
+  scale_color_manual(
+    values = c("Actual" = "black", "Predicted" = "red"),
+    name = NULL
+  ) +
   labs(
-    title = "ARIMA Predicted vs Actual Sales",
+    title = "Evaluation Forecast: Actual vs Predicted Sales",
     subtitle = "Sample Item: FOODS_3_263_TX_3",
-    y = "Daily Sales",
     x = "Forecast Horizon (Days)",
-    colour = ""
+    y = "Daily Sales"
+  ) +
+  theme(
+    legend.position = c(0.98, 0.98),
+    legend.justification = c("right", "top"),
+    legend.direction = "horizontal",
+    legend.background = element_rect(fill = "white", color = NA),
+    legend.key = element_blank()
   )
+
+
+## Analysing the chosen ARIMA models that were searched with 
+library(purrr)
+
+arima_orders <- arima_models_stepwise %>%
+  map_df(~ tibble(
+    item_id = .$item_id,
+    p = length(.$ar_roots),
+    d = .$model$d,          # if using fable ARIMA objects
+    q = length(.$ma_roots)
+  ))
+arima_orders
